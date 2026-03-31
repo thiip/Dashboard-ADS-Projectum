@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Projectum — Ads Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --topo: #3B82F6;
+    --meio: #8B5CF6;
+    --fundo: #10B981;
+    --yellow: #FFD600;
+  }
+  body { background: #0d0d0d; color: #e5e7eb; font-family: 'Inter', system-ui, sans-serif; }
+  .card { background: #161616; border: 1px solid #262626; border-radius: 12px; }
+  .kpi-card { background: #161616; border: 1px solid #262626; border-radius: 12px; transition: border-color .2s; }
+  .kpi-card:hover { border-color: #404040; }
+  .funnel-topo { border-left: 3px solid var(--topo); }
+  .funnel-meio { border-left: 3px solid var(--meio); }
+  .funnel-fundo { border-left: 3px solid var(--fundo); }
+  .badge-ativo { background: #052e16; color: #86efac; border: 1px solid #166534; }
+  .badge-desativado { background: #1c1917; color: #78716c; border: 1px solid #292524; }
+  .badge-topo { background: #1e3a5f; color: #93c5fd; }
+  .badge-meio { background: #2e1065; color: #c4b5fd; }
+  .badge-fundo { background: #052e16; color: #6ee7b7; }
+  .tab-active { color: #FFD600; border-bottom: 2px solid #FFD600; }
+  .tab-inactive { color: #6b7280; border-bottom: 2px solid transparent; }
+  .tab-inactive:hover { color: #9ca3af; }
+  .sortable:hover { cursor: pointer; background: #1f1f1f; }
+  .sort-asc::after { content: ' ▲'; font-size: 10px; opacity: .7; }
+  .sort-desc::after { content: ' ▼'; font-size: 10px; opacity: .7; }
+  .skeleton { background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%); background-size: 200%; animation: shimmer 1.4s infinite; border-radius: 6px; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .funnel-arrow { color: #374151; font-size: 28px; display: flex; align-items: center; }
+  .scrollbar-thin::-webkit-scrollbar { height: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: #1a1a1a; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }
+  select option { background: #1a1a1a; }
+  .chart-container { position: relative; height: 260px; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<header class="sticky top-0 z-50 border-b border-[#1f1f1f]" style="background:#0d0d0d;">
+  <div class="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:#FFD600;">
+        <span style="font-size:14px;font-weight:900;color:#000;">P</span>
+      </div>
+      <div>
+        <div class="font-bold text-white text-sm leading-none">Projectum</div>
+        <div class="text-[11px] text-gray-500 mt-0.5">Meta Ads Dashboard — Natal 2026</div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <!-- Days selector -->
+      <select id="daysSelect" onchange="onDaysChange()"
+        class="text-sm bg-[#1a1a1a] border border-[#2a2a2a] text-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#FFD600] cursor-pointer">
+        <option value="7">Últimos 7 dias</option>
+        <option value="14">Últimos 14 dias</option>
+        <option value="30" selected>Últimos 30 dias</option>
+        <option value="60">Últimos 60 dias</option>
+        <option value="90">Últimos 90 dias</option>
+      </select>
+
+      <!-- Refresh -->
+      <button onclick="refreshAll()" id="refreshBtn"
+        class="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border border-[#2a2a2a] text-gray-400 hover:text-white hover:border-[#404040] transition-all">
+        <svg id="refreshIcon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Atualizar
+      </button>
+
+      <!-- Mode badge -->
+      <div id="modeBadge" class="hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-900 text-amber-300 border border-amber-700">DEMO</div>
+
+      <!-- API status -->
+      <div id="apiStatus" class="flex items-center gap-1.5 text-xs text-gray-500">
+        <div id="statusDot" class="w-2 h-2 rounded-full bg-gray-600"></div>
+        <span id="statusText">—</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-[1400px] mx-auto px-6 py-6 space-y-6">
+
+  <!-- KPI Cards -->
+  <section>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="kpiGrid">
+      <!-- Skeleton placeholders -->
+      <div class="kpi-card p-5"><div class="skeleton h-4 w-24 mb-3"></div><div class="skeleton h-8 w-32 mb-2"></div><div class="skeleton h-3 w-20"></div></div>
+      <div class="kpi-card p-5"><div class="skeleton h-4 w-24 mb-3"></div><div class="skeleton h-8 w-32 mb-2"></div><div class="skeleton h-3 w-20"></div></div>
+      <div class="kpi-card p-5"><div class="skeleton h-4 w-24 mb-3"></div><div class="skeleton h-8 w-32 mb-2"></div><div class="skeleton h-3 w-20"></div></div>
+      <div class="kpi-card p-5"><div class="skeleton h-4 w-24 mb-3"></div><div class="skeleton h-8 w-32 mb-2"></div><div class="skeleton h-3 w-20"></div></div>
+    </div>
+  </section>
+
+  <!-- Funil de Campanhas -->
+  <section>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">Funil de Campanhas</h2>
+      <span class="text-xs text-gray-600">TOPO → MEIO → FUNDO</span>
+    </div>
+    <div class="flex flex-col md:flex-row gap-2 md:gap-0 items-stretch" id="funnelGrid">
+      <div class="flex-1 card p-5"><div class="skeleton h-40 w-full"></div></div>
+      <div class="funnel-arrow px-3 hidden md:flex">›</div>
+      <div class="flex-1 card p-5"><div class="skeleton h-40 w-full"></div></div>
+      <div class="funnel-arrow px-3 hidden md:flex">›</div>
+      <div class="flex-1 card p-5"><div class="skeleton h-40 w-full"></div></div>
+    </div>
+  </section>
+
+  <!-- Charts -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- Gasto diário -->
+    <div class="card p-5">
+      <h3 class="text-sm font-semibold text-gray-400 mb-4">Gasto Diário (R$)</h3>
+      <div class="chart-container">
+        <canvas id="chartSpend"></canvas>
+      </div>
+    </div>
+    <!-- CTR diário -->
+    <div class="card p-5">
+      <h3 class="text-sm font-semibold text-gray-400 mb-4">CTR Diário (%)</h3>
+      <div class="chart-container">
+        <canvas id="chartCTR"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- Gasto por campanha (bar) -->
+  <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="card p-5 col-span-2">
+      <h3 class="text-sm font-semibold text-gray-400 mb-4">Cliques por Campanha</h3>
+      <div class="chart-container" style="height:200px;">
+        <canvas id="chartCampaignClicks"></canvas>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="text-sm font-semibold text-gray-400 mb-4">Distribuição de Gasto</h3>
+      <div class="chart-container" style="height:200px;">
+        <canvas id="chartSpendPie"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- Gastos Mensais -->
+  <section>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">Gastos Mensais por Campanha</h2>
+      <span class="text-xs text-gray-600" id="monthlyPeriod"></span>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- Stacked bar chart -->
+      <div class="card p-5 col-span-2">
+        <div class="chart-container" style="height:300px;">
+          <canvas id="chartMonthly"></canvas>
+        </div>
+      </div>
+      <!-- Monthly summary table -->
+      <div class="card p-5 overflow-hidden">
+        <h3 class="text-sm font-semibold text-gray-400 mb-3">Resumo por Mês</h3>
+        <div class="overflow-y-auto" style="max-height:280px;">
+          <table class="w-full text-xs" id="monthlyTable">
+            <thead>
+              <tr class="border-b border-[#1f1f1f]">
+                <th class="text-left text-gray-500 font-medium px-2 py-2">Mês</th>
+                <th class="text-right text-gray-500 font-medium px-2 py-2">Gasto</th>
+                <th class="text-right text-gray-500 font-medium px-2 py-2">Cliques</th>
+                <th class="text-right text-gray-500 font-medium px-2 py-2">Leads</th>
+              </tr>
+            </thead>
+            <tbody id="monthlyBody">
+              <tr><td colspan="4" class="px-2 py-4 text-center text-gray-600">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Evolução acumulada -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="card p-5">
+      <h3 class="text-sm font-semibold text-gray-400 mb-4">Gasto Acumulado (R$)</h3>
+      <div class="chart-container" style="height:220px;">
+        <canvas id="chartCumulative"></canvas>
+      </div>
+    </div>
+    <div class="card p-5">
+      <h3 class="text-sm font-semibold text-gray-400 mb-4">CPL Mensal — Funil FUNDO</h3>
+      <div class="chart-container" style="height:220px;">
+        <canvas id="chartCPL"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- Ads Table -->
+  <section>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">Anúncios</h2>
+      <div class="flex items-center gap-3">
+        <!-- Filter -->
+        <select id="funnelFilter" onchange="renderTable()"
+          class="text-xs bg-[#1a1a1a] border border-[#2a2a2a] text-gray-400 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#FFD600]">
+          <option value="">Todos os funis</option>
+          <option value="TOPO">TOPO</option>
+          <option value="MEIO">MEIO</option>
+          <option value="FUNDO">FUNDO</option>
+        </select>
+        <span id="adsCount" class="text-xs text-gray-600"></span>
+      </div>
+    </div>
+    <div class="card overflow-hidden">
+      <div class="overflow-x-auto scrollbar-thin">
+        <table class="w-full text-sm" id="adsTable">
+          <thead>
+            <tr class="border-b border-[#1f1f1f]">
+              <th class="text-left text-xs text-gray-500 font-medium px-4 py-3">Anúncio</th>
+              <th class="text-left text-xs text-gray-500 font-medium px-4 py-3">Status</th>
+              <th class="sortable text-right text-xs text-gray-500 font-medium px-4 py-3 rounded" onclick="sortTable('spend')">Gasto</th>
+              <th class="sortable text-right text-xs text-gray-500 font-medium px-4 py-3" onclick="sortTable('impressions')">Impressões</th>
+              <th class="sortable text-right text-xs text-gray-500 font-medium px-4 py-3" onclick="sortTable('clicks')">Cliques</th>
+              <th class="sortable text-right text-xs text-gray-500 font-medium px-4 py-3" onclick="sortTable('ctr')">CTR</th>
+              <th class="sortable text-right text-xs text-gray-500 font-medium px-4 py-3" onclick="sortTable('cpm')">CPM</th>
+              <th class="sortable text-right text-xs text-gray-500 font-medium px-4 py-3" onclick="sortTable('reach')">Alcance</th>
+              <th class="sortable text-right text-xs text-gray-500 font-medium px-4 py-3" onclick="sortTable('leads')">Leads</th>
+            </tr>
+          </thead>
+          <tbody id="adsBody">
+            <tr><td colspan="9" class="px-4 py-8 text-center text-gray-600 text-xs">Carregando anúncios...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Error Toast -->
+<div id="errorToast" class="hidden fixed bottom-6 right-6 bg-red-950 border border-red-800 text-red-300 text-sm px-4 py-3 rounded-xl shadow-xl max-w-sm z-50">
+  <div class="font-semibold mb-1">Erro de API</div>
+  <div id="errorMsg" class="text-xs opacity-80"></div>
+</div>
+
+<script>
+// =====================================================
+// CONFIG
+// =====================================================
+const API_BASE = 'http://localhost:8000';
+
+// =====================================================
+// STATE
+// =====================================================
+let adsData = [];
+let campaignsData = [];
+let sortField = 'spend';
+let sortAsc = false;
+let chartSpend, chartCTR, chartCampaignClicks, chartSpendPie, chartMonthly, chartCumulative, chartCPL;
+let monthlyData = [];
+
+// =====================================================
+// UTILS
+// =====================================================
+const fmt = {
+  brl: (v) => 'R$ ' + (v || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}),
+  num: (v) => (v || 0).toLocaleString('pt-BR'),
+  pct: (v) => (v || 0).toFixed(2) + '%',
+  dec: (v) => (v || 0).toFixed(2),
+};
+
+function getDays() { return parseInt(document.getElementById('daysSelect').value); }
+
+function showError(msg) {
+  const t = document.getElementById('errorToast');
+  document.getElementById('errorMsg').textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 6000);
+}
+
+function setStatus(ok, text) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = `w-2 h-2 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`;
+  txt.textContent = text;
+}
+
+function setRefreshing(v) {
+  const icon = document.getElementById('refreshIcon');
+  const btn = document.getElementById('refreshBtn');
+  icon.style.animation = v ? 'spin 1s linear infinite' : '';
+  btn.disabled = v;
+}
+
+// Add spin animation
+const style = document.createElement('style');
+style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+document.head.appendChild(style);
+
+// =====================================================
+// FETCH
+// =====================================================
+async function apiFetch(path) {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({detail: res.statusText}));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// =====================================================
+// RENDER KPIs
+// =====================================================
+function renderKPIs(data) {
+  const grid = document.getElementById('kpiGrid');
+
+  const kpis = [
+    {
+      label: 'Gasto Total',
+      value: fmt.brl(data.spend),
+      sub: `${getDays()} dias • ${fmt.brl(data.spend / getDays())}/dia`,
+      icon: '💰',
+      color: '#FFD600',
+    },
+    {
+      label: 'Cliques no Link',
+      value: fmt.num(data.clicks),
+      sub: `CPC médio: ${fmt.brl(data.cpc)}`,
+      icon: '🖱️',
+      color: '#3B82F6',
+    },
+    {
+      label: 'CTR Médio',
+      value: fmt.pct(data.ctr),
+      sub: `CPM: ${fmt.brl(data.cpm)}`,
+      icon: '📊',
+      color: '#8B5CF6',
+    },
+    {
+      label: 'Leads',
+      value: fmt.num(data.leads),
+      sub: data.leads > 0 ? `CPL: ${fmt.brl(data.spend / data.leads)}` : 'Nenhum lead no período',
+      icon: '🎯',
+      color: '#10B981',
+    },
+  ];
+
+  grid.innerHTML = kpis.map(k => `
+    <div class="kpi-card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs text-gray-500 font-medium uppercase tracking-wide">${k.label}</span>
+        <span class="text-lg">${k.icon}</span>
+      </div>
+      <div class="text-2xl font-bold text-white mb-1" style="color:${k.color}">${k.value}</div>
+      <div class="text-xs text-gray-600">${k.sub}</div>
+    </div>
+  `).join('');
+}
+
+// =====================================================
+// RENDER FUNNEL
+// =====================================================
+function renderFunnel(campaigns) {
+  const container = document.getElementById('funnelGrid');
+  const funnels = ['TOPO', 'MEIO', 'FUNDO'];
+  const labels = { TOPO: 'Reconhecimento', MEIO: 'Consideração', FUNDO: 'Conversão' };
+  const icons = { TOPO: '📢', MEIO: '🔍', FUNDO: '🎯' };
+
+  let html = '';
+  funnels.forEach((f, i) => {
+    const camp = campaigns.find(c => c.funnel === f) || {};
+    const hasData = Object.keys(camp).length > 0;
+    const statusClass = camp.status === 'ACTIVE' ? 'badge-ativo' : 'badge-desativado';
+    const statusLabel = camp.status === 'ACTIVE' ? 'Ativo' : (camp.status || '—');
+
+    html += `
+      <div class="flex-1 card p-5 funnel-${f.toLowerCase()}">
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-base">${icons[f]}</span>
+              <span class="text-xs font-bold uppercase tracking-widest" style="color:var(--${f.toLowerCase()})">${f}</span>
+            </div>
+            <div class="text-xs text-gray-500">${labels[f]}</div>
+          </div>
+          ${hasData ? `<span class="text-[10px] px-2 py-0.5 rounded-full ${statusClass}">${statusLabel}</span>` : ''}
+        </div>
+
+        ${hasData ? `
+        <div class="space-y-3">
+          <div class="flex justify-between items-center">
+            <span class="text-xs text-gray-500">Gasto</span>
+            <span class="text-sm font-semibold text-white">${fmt.brl(camp.spend)}</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-xs text-gray-500">Impressões</span>
+            <span class="text-sm text-gray-300">${fmt.num(camp.impressions)}</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-xs text-gray-500">Cliques</span>
+            <span class="text-sm text-gray-300">${fmt.num(camp.clicks)}</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-xs text-gray-500">CTR</span>
+            <span class="text-sm font-medium" style="color:var(--${f.toLowerCase()})">${fmt.pct(camp.ctr)}</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-xs text-gray-500">CPM</span>
+            <span class="text-sm text-gray-300">${fmt.brl(camp.cpm)}</span>
+          </div>
+          ${f === 'FUNDO' ? `
+          <div class="flex justify-between items-center pt-2 border-t border-[#1f1f1f]">
+            <span class="text-xs text-gray-500">Leads</span>
+            <span class="text-sm font-bold text-emerald-400">${fmt.num(camp.leads)}</span>
+          </div>` : ''}
+          <div class="flex justify-between items-center">
+            <span class="text-xs text-gray-500">Orçamento/dia</span>
+            <span class="text-xs text-gray-400">${fmt.brl(camp.daily_budget)}</span>
+          </div>
+        </div>
+        ` : `
+        <div class="text-xs text-gray-600 text-center py-6">Sem dados no período</div>
+        `}
+      </div>
+    `;
+
+    if (i < funnels.length - 1) {
+      html += `<div class="funnel-arrow px-2 hidden md:flex">›</div>`;
+    }
+  });
+
+  container.innerHTML = html;
+}
+
+// =====================================================
+// CHARTS
+// =====================================================
+const chartDefaults = {
+  color: '#9ca3af',
+  plugins: {
+    legend: { labels: { color: '#6b7280', font: { size: 11 } } },
+    tooltip: {
+      backgroundColor: '#1a1a1a',
+      borderColor: '#2a2a2a',
+      borderWidth: 1,
+      titleColor: '#e5e7eb',
+      bodyColor: '#9ca3af',
+    },
+  },
+  scales: {
+    x: {
+      ticks: { color: '#4b5563', font: { size: 10 } },
+      grid: { color: '#1a1a1a' },
+    },
+    y: {
+      ticks: { color: '#4b5563', font: { size: 10 } },
+      grid: { color: '#1a1a1a' },
+    },
+  },
+};
+
+function formatDateShort(d) {
+  const parts = d.split('-');
+  return `${parts[2]}/${parts[1]}`;
+}
+
+function initCharts() {
+  Chart.defaults.color = '#9ca3af';
+
+  chartSpend = new Chart(document.getElementById('chartSpend').getContext('2d'), {
+    type: 'bar',
+    data: { labels: [], datasets: [] },
+    options: {
+      ...chartDefaults,
+      responsive: true, maintainAspectRatio: false,
+      plugins: { ...chartDefaults.plugins, legend: { display: false } },
+    },
+  });
+
+  chartCTR = new Chart(document.getElementById('chartCTR').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: {
+      ...chartDefaults,
+      responsive: true, maintainAspectRatio: false,
+      plugins: { ...chartDefaults.plugins, legend: { display: false } },
+      elements: { point: { radius: 2 }, line: { tension: 0.3 } },
+    },
+  });
+
+  chartCampaignClicks = new Chart(document.getElementById('chartCampaignClicks').getContext('2d'), {
+    type: 'bar',
+    data: { labels: [], datasets: [] },
+    options: {
+      ...chartDefaults,
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: { ...chartDefaults.plugins, legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#4b5563', font: { size: 10 } }, grid: { color: '#1a1a1a' } },
+        y: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false } },
+      },
+    },
+  });
+
+  chartSpendPie = new Chart(document.getElementById('chartSpendPie').getContext('2d'), {
+    type: 'doughnut',
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#6b7280', font: { size: 11 }, padding: 12 } },
+        tooltip: chartDefaults.plugins.tooltip,
+      },
+      cutout: '65%',
+    },
+  });
+
+  // Monthly stacked bar
+  chartMonthly = new Chart(document.getElementById('chartMonthly').getContext('2d'), {
+    type: 'bar',
+    data: { labels: [], datasets: [] },
+    options: {
+      ...chartDefaults,
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        ...chartDefaults.plugins,
+        legend: { position: 'top', labels: { color: '#9ca3af', font: { size: 11 }, padding: 16, usePointStyle: true, pointStyle: 'circle' } },
+        tooltip: {
+          ...chartDefaults.plugins.tooltip,
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: R$ ${parseFloat(ctx.raw || 0).toFixed(2)}`,
+          }
+        },
+      },
+      scales: {
+        x: { stacked: true, ticks: { color: '#6b7280', font: { size: 10 } }, grid: { display: false } },
+        y: { stacked: true, ticks: { color: '#4b5563', font: { size: 10 }, callback: v => 'R$' + v }, grid: { color: '#1a1a1a' } },
+      },
+    },
+  });
+
+  // Cumulative line
+  chartCumulative = new Chart(document.getElementById('chartCumulative').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: {
+      ...chartDefaults,
+      responsive: true, maintainAspectRatio: false,
+      plugins: { ...chartDefaults.plugins, legend: { display: false } },
+      elements: { point: { radius: 3, hoverRadius: 5 }, line: { tension: 0.3 } },
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#4b5563', font: { size: 10 }, callback: v => 'R$' + v }, grid: { color: '#1a1a1a' } },
+      },
+    },
+  });
+
+  // CPL line (FUNDO)
+  chartCPL = new Chart(document.getElementById('chartCPL').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: {
+      ...chartDefaults,
+      responsive: true, maintainAspectRatio: false,
+      plugins: { ...chartDefaults.plugins, legend: { display: false } },
+      elements: { point: { radius: 4, hoverRadius: 6, backgroundColor: '#10B981' }, line: { tension: 0.3, borderColor: '#10B981' } },
+      scales: {
+        x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#4b5563', font: { size: 10 }, callback: v => 'R$' + v }, grid: { color: '#1a1a1a' } },
+      },
+    },
+  });
+}
+
+function updateChartsDaily(daily) {
+  const labels = daily.map(d => formatDateShort(d.date_start));
+  const spends = daily.map(d => parseFloat(d.spend || 0));
+  const ctrs = daily.map(d => parseFloat(d.ctr || 0));
+
+  // Spend chart
+  chartSpend.data.labels = labels;
+  chartSpend.data.datasets = [{
+    data: spends,
+    backgroundColor: '#FFD600',
+    borderRadius: 4,
+    borderSkipped: false,
+  }];
+  chartSpend.update();
+
+  // CTR chart
+  chartCTR.data.labels = labels;
+  chartCTR.data.datasets = [{
+    data: ctrs,
+    borderColor: '#3B82F6',
+    backgroundColor: 'rgba(59,130,246,0.1)',
+    fill: true,
+  }];
+  chartCTR.update();
+}
+
+function updateChartsCampaigns(campaigns) {
+  const projectumCamps = campaigns.filter(c => ['TOPO', 'MEIO', 'FUNDO'].includes(c.funnel));
+  const colors = { TOPO: '#3B82F6', MEIO: '#8B5CF6', FUNDO: '#10B981' };
+
+  // Short names for bar chart
+  const shortNames = projectumCamps.map(c => c.funnel);
+  const clicks = projectumCamps.map(c => c.clicks || 0);
+  const spends = projectumCamps.map(c => c.spend || 0);
+  const campColors = projectumCamps.map(c => colors[c.funnel] || '#6B7280');
+
+  chartCampaignClicks.data.labels = shortNames;
+  chartCampaignClicks.data.datasets = [{
+    data: clicks,
+    backgroundColor: campColors,
+    borderRadius: 4,
+  }];
+  chartCampaignClicks.update();
+
+  // Pie chart
+  chartSpendPie.data.labels = shortNames;
+  chartSpendPie.data.datasets = [{
+    data: spends,
+    backgroundColor: campColors,
+    borderWidth: 0,
+    hoverOffset: 4,
+  }];
+  chartSpendPie.update();
+}
+
+// =====================================================
+// ADS TABLE
+// =====================================================
+function sortTable(field) {
+  if (sortField === field) {
+    sortAsc = !sortAsc;
+  } else {
+    sortField = field;
+    sortAsc = false;
+  }
+  renderTable();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('adsBody');
+  const filter = document.getElementById('funnelFilter').value;
+
+  let data = [...adsData];
+  if (filter) data = data.filter(a => a.funnel === filter);
+
+  data.sort((a, b) => {
+    const av = a[sortField] ?? 0;
+    const bv = b[sortField] ?? 0;
+    return sortAsc ? av - bv : bv - av;
+  });
+
+  document.getElementById('adsCount').textContent = `${data.length} anúncios`;
+
+  // Update sort headers
+  document.querySelectorAll('.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc', 'text-white');
+    const col = th.getAttribute('onclick')?.match(/'(\w+)'/)?.[1];
+    if (col === sortField) {
+      th.classList.add(sortAsc ? 'sort-asc' : 'sort-desc', 'text-gray-300');
+    }
+  });
+
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center text-gray-600 text-xs">Nenhum anúncio encontrado</td></tr>`;
+    return;
+  }
+
+  const funnelColors = { TOPO: '#3B82F6', MEIO: '#8B5CF6', FUNDO: '#10B981' };
+  const badgeClass = { ACTIVE: 'badge-ativo', PAUSED: 'badge-desativado' };
+
+  tbody.innerHTML = data.map(ad => {
+    const statusKey = ad.status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED';
+    const statusLabel = ad.status === 'ACTIVE' ? 'Ativo' : (ad.status || '—');
+    const funnelColor = funnelColors[ad.funnel] || '#6b7280';
+    const ctrClass = ad.ctr > 2 ? 'text-emerald-400' : ad.ctr > 1 ? 'text-yellow-400' : 'text-red-400';
+
+    return `
+      <tr class="border-b border-[#111] hover:bg-[#0f0f0f] transition-colors">
+        <td class="px-4 py-3">
+          <div class="flex items-center gap-2">
+            <div class="w-1 h-8 rounded-full" style="background:${funnelColor};flex-shrink:0;"></div>
+            <div>
+              <div class="text-white text-xs font-medium leading-tight">${ad.name}</div>
+              <div class="text-[10px] text-gray-600 mt-0.5">${ad.campaign_name?.replace('Projectum Natal 2026', '')?.trim() || ''}</div>
+            </div>
+          </div>
+        </td>
+        <td class="px-4 py-3">
+          <span class="text-[10px] px-2 py-0.5 rounded-full ${badgeClass[statusKey] || 'badge-desativado'}">${statusLabel}</span>
+        </td>
+        <td class="px-4 py-3 text-right text-white font-medium text-xs">${fmt.brl(ad.spend)}</td>
+        <td class="px-4 py-3 text-right text-gray-300 text-xs">${fmt.num(ad.impressions)}</td>
+        <td class="px-4 py-3 text-right text-gray-300 text-xs">${fmt.num(ad.clicks)}</td>
+        <td class="px-4 py-3 text-right text-xs font-medium ${ctrClass}">${fmt.pct(ad.ctr)}</td>
+        <td class="px-4 py-3 text-right text-gray-300 text-xs">${fmt.brl(ad.cpm)}</td>
+        <td class="px-4 py-3 text-right text-gray-300 text-xs">${fmt.num(ad.reach)}</td>
+        <td class="px-4 py-3 text-right text-xs">
+          ${ad.leads > 0
+            ? `<span class="text-emerald-400 font-bold">${ad.leads}</span>`
+            : `<span class="text-gray-700">—</span>`}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// =====================================================
+// LOAD DATA
+// =====================================================
+async function loadSummary() {
+  const days = getDays();
+  const data = await apiFetch(`/api/summary?days=${days}`);
+  renderKPIs(data);
+}
+
+async function loadCampaigns() {
+  const days = getDays();
+  const data = await apiFetch(`/api/campaigns?days=${days}`);
+  campaignsData = data;
+  renderFunnel(data);
+  updateChartsCampaigns(data);
+}
+
+async function loadAds() {
+  const days = getDays();
+  const data = await apiFetch(`/api/ads?days=${days}`);
+  adsData = data;
+  renderTable();
+}
+
+async function loadDaily() {
+  const days = getDays();
+  const data = await apiFetch(`/api/daily?days=${days}`);
+  updateChartsDaily(data);
+}
+
+async function loadMonthly() {
+  const data = await apiFetch('/api/monthly');
+  monthlyData = data;
+  renderMonthlyCharts(data);
+  renderMonthlyTable(data);
+}
+
+function renderMonthlyCharts(data) {
+  const colors = { TOPO: '#3B82F6', MEIO: '#8B5CF6', FUNDO: '#10B981' };
+
+  // Group by month
+  const monthMap = {};
+  data.forEach(d => {
+    if (!monthMap[d.month]) monthMap[d.month] = { label: d.month_name };
+    monthMap[d.month][d.funnel] = d.spend;
+  });
+  const months = Object.keys(monthMap).sort();
+  const labels = months.map(m => monthMap[m].label);
+
+  document.getElementById('monthlyPeriod').textContent = labels.length > 0 ? `${labels[0]} — ${labels[labels.length - 1]}` : '';
+
+  // Stacked bar
+  chartMonthly.data.labels = labels;
+  chartMonthly.data.datasets = ['TOPO', 'MEIO', 'FUNDO'].map(f => ({
+    label: f,
+    data: months.map(m => monthMap[m][f] || 0),
+    backgroundColor: colors[f],
+    borderRadius: 3,
+  }));
+  chartMonthly.update();
+
+  // Cumulative line
+  let cumTotal = 0;
+  const cumData = months.map(m => {
+    const total = (monthMap[m].TOPO || 0) + (monthMap[m].MEIO || 0) + (monthMap[m].FUNDO || 0);
+    cumTotal += total;
+    return Math.round(cumTotal * 100) / 100;
+  });
+  chartCumulative.data.labels = labels;
+  chartCumulative.data.datasets = [{
+    data: cumData,
+    borderColor: '#FFD600',
+    backgroundColor: 'rgba(255,214,0,0.08)',
+    fill: true,
+    pointBackgroundColor: '#FFD600',
+  }];
+  chartCumulative.update();
+
+  // CPL (FUNDO only)
+  const fundoMonths = {};
+  data.filter(d => d.funnel === 'FUNDO').forEach(d => {
+    fundoMonths[d.month] = d;
+  });
+  const cplMonths = months.filter(m => fundoMonths[m]);
+  const cplLabels = cplMonths.map(m => monthMap[m].label);
+  const cplData = cplMonths.map(m => {
+    const f = fundoMonths[m];
+    return f.leads > 0 ? Math.round(f.spend / f.leads * 100) / 100 : null;
+  });
+
+  chartCPL.data.labels = cplLabels;
+  chartCPL.data.datasets = [{
+    data: cplData,
+    borderColor: '#10B981',
+    backgroundColor: 'rgba(16,185,129,0.08)',
+    fill: true,
+    pointBackgroundColor: '#10B981',
+    spanGaps: true,
+  }];
+  chartCPL.update();
+}
+
+function renderMonthlyTable(data) {
+  const tbody = document.getElementById('monthlyBody');
+  // Group by month, sum across campaigns
+  const monthMap = {};
+  data.forEach(d => {
+    if (!monthMap[d.month]) monthMap[d.month] = { label: d.month_name, spend: 0, clicks: 0, leads: 0 };
+    monthMap[d.month].spend += d.spend;
+    monthMap[d.month].clicks += d.clicks;
+    monthMap[d.month].leads += d.leads;
+  });
+  const months = Object.keys(monthMap).sort().reverse();
+  const totalSpend = months.reduce((s, m) => s + monthMap[m].spend, 0);
+
+  tbody.innerHTML = months.map(m => {
+    const d = monthMap[m];
+    const pct = totalSpend > 0 ? (d.spend / totalSpend * 100).toFixed(0) : 0;
+    return `
+      <tr class="border-b border-[#111] hover:bg-[#0f0f0f]">
+        <td class="px-2 py-2 text-gray-300 font-medium">${d.label}</td>
+        <td class="px-2 py-2 text-right text-white">${fmt.brl(d.spend)}</td>
+        <td class="px-2 py-2 text-right text-gray-400">${fmt.num(d.clicks)}</td>
+        <td class="px-2 py-2 text-right">
+          ${d.leads > 0 ? `<span class="text-emerald-400 font-bold">${d.leads}</span>` : `<span class="text-gray-700">—</span>`}
+        </td>
+      </tr>
+    `;
+  }).join('') + `
+    <tr class="border-t-2 border-[#2a2a2a]">
+      <td class="px-2 py-2 text-[#FFD600] font-bold text-[11px]">TOTAL</td>
+      <td class="px-2 py-2 text-right text-[#FFD600] font-bold">${fmt.brl(totalSpend)}</td>
+      <td class="px-2 py-2 text-right text-gray-300 font-medium">${fmt.num(months.reduce((s,m) => s + monthMap[m].clicks, 0))}</td>
+      <td class="px-2 py-2 text-right text-emerald-400 font-bold">${months.reduce((s,m) => s + monthMap[m].leads, 0)}</td>
+    </tr>
+  `;
+}
+
+async function refreshAll() {
+  setRefreshing(true);
+  setStatus(null, 'Carregando...');
+
+  // Clear cache first
+  try { await fetch(`${API_BASE}/api/cache`, { method: 'DELETE' }); } catch {}
+
+  try {
+    await Promise.all([
+      loadSummary(),
+      loadCampaigns(),
+      loadAds(),
+      loadDaily(),
+      loadMonthly(),
+    ]);
+    setStatus(true, 'Atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+  } catch (e) {
+    setStatus(false, 'Erro de conexão');
+    showError(e.message);
+    console.error(e);
+  } finally {
+    setRefreshing(false);
+  }
+}
+
+async function loadAll() {
+  setRefreshing(true);
+  setStatus(null, 'Carregando...');
+
+  try {
+    await Promise.all([
+      loadSummary(),
+      loadCampaigns(),
+      loadAds(),
+      loadDaily(),
+      loadMonthly(),
+    ]);
+    setStatus(true, 'Atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+  } catch (e) {
+    setStatus(false, 'Erro de conexão');
+    showError(e.message);
+    console.error(e);
+  } finally {
+    setRefreshing(false);
+  }
+}
+
+async function checkMode() {
+  try {
+    const health = await apiFetch('/health');
+    const badge = document.getElementById('modeBadge');
+    if (health.mode === 'demo') {
+      badge.classList.remove('hidden');
+      badge.textContent = 'DEMO';
+    } else {
+      badge.classList.remove('hidden', 'bg-amber-900', 'text-amber-300', 'border-amber-700');
+      badge.classList.add('bg-emerald-900', 'text-emerald-300', 'border-emerald-700');
+      badge.textContent = 'LIVE API';
+    }
+  } catch(e) {}
+}
+
+function onDaysChange() {
+  loadAll();
+}
+
+// =====================================================
+// INIT
+// =====================================================
+initCharts();
+checkMode();
+loadAll();
+</script>
+</body>
+</html>
