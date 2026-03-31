@@ -909,6 +909,10 @@ async function checkMode() {
     if (health.mode === 'demo') {
       badge.classList.remove('hidden');
       badge.textContent = 'DEMO';
+    } else if (health.mode === 'supabase') {
+      badge.classList.remove('hidden', 'bg-amber-900', 'text-amber-300', 'border-amber-700');
+      badge.classList.add('bg-blue-900', 'text-blue-300', 'border-blue-700');
+      badge.textContent = 'SUPABASE';
     } else {
       badge.classList.remove('hidden', 'bg-amber-900', 'text-amber-300', 'border-amber-700');
       badge.classList.add('bg-emerald-900', 'text-emerald-300', 'border-emerald-700');
