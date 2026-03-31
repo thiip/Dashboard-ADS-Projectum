@@ -20,9 +20,11 @@ except ImportError:
 
 try:
     from supabase import create_client, Client as SupabaseClient
+    from supabase.lib.client_options import ClientOptions
 except ImportError:
     SupabaseClient = None
     create_client = None
+    ClientOptions = None
 
 from dotenv import load_dotenv
 
@@ -46,12 +48,14 @@ META_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
 ACCOUNT_ID = os.getenv("META_ACCOUNT_ID", "1917726750804")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+SUPABASE_SCHEMA = os.getenv("SUPABASE_SCHEMA", "ads_meta")
 
 # Data source priority: Supabase > Meta API > Demo
 supabase: SupabaseClient = None
 if SUPABASE_URL and SUPABASE_KEY and create_client:
     try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        opts = ClientOptions(schema=SUPABASE_SCHEMA) if ClientOptions else None
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY, options=opts) if opts else create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception:
         supabase = None
 
