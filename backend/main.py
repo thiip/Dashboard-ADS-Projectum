@@ -1,6 +1,6 @@
 """
 Projectum Ads Dashboard — Backend API
-Modo DEMO (dados das campanhas reais) + Modo API (Meta Graph API v21.0)
+Modo DEMO | Modo Supabase | Modo Meta API
 """
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +17,12 @@ try:
     import requests as http_requests
 except ImportError:
     http_requests = None
+
+try:
+    from supabase import create_client, Client as SupabaseClient
+except ImportError:
+    SupabaseClient = None
+    create_client = None
 
 from dotenv import load_dotenv
 
@@ -38,7 +44,20 @@ if FRONTEND_DIR.exists():
 
 META_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
 ACCOUNT_ID = os.getenv("META_ACCOUNT_ID", "1917726750804")
-USE_DEMO = not bool(META_TOKEN)
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+
+# Data source priority: Supabase > Meta API > Demo
+supabase: SupabaseClient = None
+if SUPABASE_URL and SUPABASE_KEY and create_client:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception:
+        supabase = None
+
+USE_SUPABASE = supabase is not None
+USE_META_API = not USE_SUPABASE and bool(META_TOKEN)
+USE_DEMO = not USE_SUPABASE and not USE_META_API
 
 # =====================================================
 # DEMO DATA — Estrutura real das campanhas Projectum
@@ -451,16 +470,41 @@ async def serve_index():
 
 @app.get("/health")
 async def health():
+    mode = "supabase" if USE_SUPABASE else ("api" if USE_META_API else "demo")
     return {
         "status": "ok",
-        "mode": "demo" if USE_DEMO else "api",
+        "mode": mode,
         "account_id": ACCOUNT_ID,
         "token_configured": bool(META_TOKEN),
+        "supabase_configured": USE_SUPABASE,
     }
 
 
 @app.get("/api/summary")
 async def get_summary(days: int = Query(30, ge=1, le=365)):
+    if USE_SUPABASE:
+        start, end = get_date_range(days)
+        resp = supabase.table("daily_metrics").select("*").gte("date", start).lte("date", end).execute()
+        rows = resp.data or []
+        total = {
+            "impressions": sum(r["impressions"] for r in rows),
+            "clicks": sum(r["clicks"] for r in rows),
+            "spend": round(sum(float(r["spend"]) for r in rows), 2),
+            "reach": sum(r["reach"] for r in rows),
+        }
+        # Get leads from campaign metrics
+        resp2 = supabase.table("campaign_daily_metrics").select("leads").gte("date", start).lte("date", end).execute()
+        total["leads"] = sum(r["leads"] for r in (resp2.data or []))
+        total["ctr"] = round(total["clicks"] / max(total["impressions"], 1) * 100, 2)
+        total["cpm"] = round(total["spend"] / max(total["impressions"], 1) * 1000, 2)
+        total["cpc"] = round(total["spend"] / max(total["clicks"], 1), 2)
+        total["frequency"] = round(total["impressions"] / max(total["reach"], 1), 2)
+        total["days"] = days
+        total["date_start"] = start
+        total["date_end"] = end
+        total["mode"] = "supabase"
+        return total
+
     if USE_DEMO:
         total = {
             "impressions": sum(c["impressions"] for c in DEMO_CAMPAIGNS),
@@ -496,6 +540,36 @@ async def get_summary(days: int = Query(30, ge=1, le=365)):
 
 @app.get("/api/campaigns")
 async def get_campaigns(days: int = Query(30, ge=1, le=365)):
+    if USE_SUPABASE:
+        start, end = get_date_range(days)
+        # Get campaigns
+        camps = supabase.table("campaigns").select("*").execute().data or []
+        result = []
+        for c in camps:
+            # Get metrics for this campaign in the period
+            metrics = supabase.table("campaign_daily_metrics").select("*").eq("campaign_id", c["id"]).gte("date", start).lte("date", end).execute().data or []
+            impressions = sum(r["impressions"] for r in metrics)
+            clicks = sum(r["clicks"] for r in metrics)
+            spend = round(sum(float(r["spend"]) for r in metrics), 2)
+            reach = sum(r["reach"] for r in metrics)
+            leads = sum(r["leads"] for r in metrics)
+            result.append({
+                "id": c["id"], "name": c["name"],
+                "status": c["status"], "funnel": c["funnel"],
+                "funnel_color": c["funnel_color"],
+                "objective": c.get("objective", ""),
+                "daily_budget": float(c.get("daily_budget", 0)),
+                "impressions": impressions, "clicks": clicks, "spend": spend,
+                "ctr": round(clicks / max(impressions, 1) * 100, 2),
+                "cpm": round(spend / max(impressions, 1) * 1000, 2),
+                "cpc": round(spend / max(clicks, 1), 2),
+                "reach": reach,
+                "frequency": round(impressions / max(reach, 1), 2),
+                "leads": leads,
+            })
+        result.sort(key=lambda x: FUNNEL_ORDER.get(x["funnel"], 99))
+        return result
+
     if USE_DEMO:
         return DEMO_CAMPAIGNS
 
@@ -531,6 +605,32 @@ async def get_campaigns(days: int = Query(30, ge=1, le=365)):
 
 @app.get("/api/ads")
 async def get_ads(days: int = Query(30, ge=1, le=365)):
+    if USE_SUPABASE:
+        start, end = get_date_range(days)
+        ads_list = supabase.table("ads").select("*, campaigns(name)").execute().data or []
+        result = []
+        for a in ads_list:
+            metrics = supabase.table("ad_daily_metrics").select("*").eq("ad_id", a["id"]).gte("date", start).lte("date", end).execute().data or []
+            impressions = sum(r["impressions"] for r in metrics)
+            clicks = sum(r["clicks"] for r in metrics)
+            spend = round(sum(float(r["spend"]) for r in metrics), 2)
+            reach = sum(r["reach"] for r in metrics)
+            leads = sum(r["leads"] for r in metrics)
+            cn = a.get("campaigns", {}).get("name", "") if a.get("campaigns") else ""
+            result.append({
+                "id": a["id"], "name": a["name"],
+                "status": a["status"],
+                "campaign_id": a["campaign_id"], "campaign_name": cn,
+                "funnel": a["funnel"], "funnel_color": a["funnel_color"],
+                "impressions": impressions, "clicks": clicks, "spend": spend,
+                "ctr": round(clicks / max(impressions, 1) * 100, 2),
+                "cpm": round(spend / max(impressions, 1) * 1000, 2),
+                "cpc": round(spend / max(clicks, 1), 2),
+                "reach": reach, "leads": leads,
+            })
+        result.sort(key=lambda x: (FUNNEL_ORDER.get(x["funnel"], 99), -x["spend"]))
+        return result
+
     if USE_DEMO:
         return DEMO_ADS
 
@@ -564,6 +664,14 @@ async def get_ads(days: int = Query(30, ge=1, le=365)):
 
 @app.get("/api/daily")
 async def get_daily(days: int = Query(30, ge=7, le=365)):
+    if USE_SUPABASE:
+        start, end = get_date_range(days)
+        resp = supabase.table("daily_metrics").select("*").gte("date", start).lte("date", end).order("date").execute()
+        return [{"date_start": r["date"], "date_stop": r["date"],
+                 "impressions": str(r["impressions"]), "clicks": str(r["clicks"]),
+                 "spend": str(r["spend"]), "ctr": str(r["ctr"]),
+                 "cpm": str(r["cpm"]), "reach": str(r["reach"])} for r in (resp.data or [])]
+
     if USE_DEMO:
         return generate_daily_demo(days)
 
@@ -580,6 +688,20 @@ async def get_daily(days: int = Query(30, ge=7, le=365)):
 @app.get("/api/monthly")
 async def get_monthly():
     """Gastos mensais por campanha (últimos meses)."""
+    if USE_SUPABASE:
+        resp = supabase.rpc("get_monthly_metrics", {}).execute()
+        if resp.data:
+            return resp.data
+        # Fallback: query the view
+        resp = supabase.table("monthly_campaign_metrics").select("*").execute()
+        return [{"month": str(r["month"])[:7], "month_name": r["month_name"],
+                 "funnel": r["funnel"], "campaign_name": r["campaign_name"],
+                 "color": r["color"], "spend": float(r["spend"]),
+                 "impressions": int(r["impressions"]), "clicks": int(r["clicks"]),
+                 "ctr": float(r["ctr"]), "cpm": float(r["cpm"]),
+                 "leads": int(r["leads"]), "budget_dia": float(r.get("budget_dia", 0))}
+                for r in (resp.data or [])]
+
     if USE_DEMO:
         return generate_monthly_demo()
 
