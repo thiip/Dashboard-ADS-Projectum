@@ -693,9 +693,12 @@ async def get_daily(days: int = Query(30, ge=7, le=365)):
 async def get_monthly():
     """Gastos mensais por campanha (últimos meses)."""
     if USE_SUPABASE:
-        resp = supabase.rpc("get_monthly_metrics", {}).execute()
-        if resp.data:
-            return resp.data
+        try:
+            resp = supabase.rpc("get_monthly_metrics", {}).execute()
+            if resp.data:
+                return resp.data
+        except Exception:
+            pass
         # Fallback: query the view
         resp = supabase.table("monthly_campaign_metrics").select("*").execute()
         return [{"month": str(r["month"])[:7], "month_name": r["month_name"],
