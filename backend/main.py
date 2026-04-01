@@ -749,3 +749,196 @@ async def get_monthly():
 async def clear_cache():
     _cache.clear()
     return {"cleared": True}
+
+
+# =====================================================
+# LINKEDIN ADS — Demo Data + Endpoints
+# =====================================================
+
+DEMO_LINKEDIN_CAMPAIGNS = [
+    {
+        "id": "594114753",
+        "name": "L1 — Awareness — Gestores de Shopping",
+        "status": "DRAFT",
+        "funnel": "TOPO",
+        "funnel_color": "#0077B5",
+        "objective": "BRAND_AWARENESS",
+        "daily_budget": 40.00,
+        "impressions": 4820,
+        "clicks": 86,
+        "spend": 312.50,
+        "ctr": 1.78,
+        "cpm": 64.83,
+        "cpc": 3.63,
+        "reach": 2180,
+        "frequency": 2.21,
+        "leads": 0,
+    },
+    {
+        "id": "594114900",
+        "name": "L2 — Consideração — Decisores de Shopping",
+        "status": "DRAFT",
+        "funnel": "MEIO",
+        "funnel_color": "#0A66C2",
+        "objective": "WEBSITE_VISITS",
+        "daily_budget": 30.00,
+        "impressions": 3150,
+        "clicks": 67,
+        "spend": 228.40,
+        "ctr": 2.13,
+        "cpm": 72.51,
+        "cpc": 3.41,
+        "reach": 1420,
+        "frequency": 2.22,
+        "leads": 2,
+    },
+]
+
+DEMO_LINKEDIN_ADS = [
+    {
+        "id": "ad_li_01", "name": "Vila Alemã — Do conceito à instalação",
+        "status": "DRAFT", "campaign_id": "594114753",
+        "campaign_name": "L1 — Awareness — Gestores de Shopping",
+        "funnel": "TOPO", "funnel_color": "#0077B5",
+        "impressions": 1680, "clicks": 32, "spend": 108.40,
+        "ctr": 1.90, "cpm": 64.52, "cpc": 3.39,
+        "reach": 820, "frequency": 2.05, "leads": 0,
+    },
+    {
+        "id": "ad_li_02", "name": "Multidão — Decoração que lota",
+        "status": "DRAFT", "campaign_id": "594114753",
+        "campaign_name": "L1 — Awareness — Gestores de Shopping",
+        "funnel": "TOPO", "funnel_color": "#0077B5",
+        "impressions": 1240, "clicks": 22, "spend": 82.30,
+        "ctr": 1.77, "cpm": 66.37, "cpc": 3.74,
+        "reach": 580, "frequency": 2.14, "leads": 0,
+    },
+    {
+        "id": "ad_li_03", "name": "Diferencial — 90% terceirizam",
+        "status": "DRAFT", "campaign_id": "594114753",
+        "campaign_name": "L1 — Awareness — Gestores de Shopping",
+        "funnel": "TOPO", "funnel_color": "#0077B5",
+        "impressions": 1020, "clicks": 18, "spend": 68.20,
+        "ctr": 1.76, "cpm": 66.86, "cpc": 3.79,
+        "reach": 460, "frequency": 2.22, "leads": 0,
+    },
+    {
+        "id": "ad_li_04", "name": "Fabricação — Isso é fabricado",
+        "status": "DRAFT", "campaign_id": "594114753",
+        "campaign_name": "L1 — Awareness — Gestores de Shopping",
+        "funnel": "TOPO", "funnel_color": "#0077B5",
+        "impressions": 880, "clicks": 14, "spend": 53.60,
+        "ctr": 1.59, "cpm": 60.91, "cpc": 3.83,
+        "reach": 320, "frequency": 2.75, "leads": 0,
+    },
+    {
+        "id": "ad_li_05", "name": "Case Vila Alemã — Projeto executado",
+        "status": "DRAFT", "campaign_id": "594114900",
+        "campaign_name": "L2 — Consideração — Decisores de Shopping",
+        "funnel": "MEIO", "funnel_color": "#0A66C2",
+        "impressions": 1620, "clicks": 38, "spend": 124.60,
+        "ctr": 2.35, "cpm": 76.91, "cpc": 3.28,
+        "reach": 780, "frequency": 2.08, "leads": 1,
+    },
+    {
+        "id": "ad_li_06", "name": "Experiência — Natal que vira resultado",
+        "status": "DRAFT", "campaign_id": "594114900",
+        "campaign_name": "L2 — Consideração — Decisores de Shopping",
+        "funnel": "MEIO", "funnel_color": "#0A66C2",
+        "impressions": 1530, "clicks": 29, "spend": 103.80,
+        "ctr": 1.90, "cpm": 67.84, "cpc": 3.58,
+        "reach": 640, "frequency": 2.39, "leads": 1,
+    },
+]
+
+
+def generate_linkedin_daily_demo(days: int):
+    rows = []
+    base_date = datetime.now() - timedelta(days=days)
+    for d in range(days):
+        dt = base_date + timedelta(days=d)
+        if dt.weekday() >= 5:
+            spend = random.uniform(5, 18)
+        else:
+            spend = random.uniform(15, 45)
+        impressions = int(spend * random.uniform(12, 20))
+        clicks = max(1, int(impressions * random.uniform(0.015, 0.028)))
+        ctr = round(clicks / impressions * 100, 2) if impressions else 0
+        cpm = round(spend / impressions * 1000, 2) if impressions else 0
+        reach = int(impressions * random.uniform(0.35, 0.55))
+        rows.append({
+            "date_start": dt.strftime("%Y-%m-%d"),
+            "date_stop": dt.strftime("%Y-%m-%d"),
+            "impressions": str(impressions),
+            "clicks": str(clicks),
+            "spend": str(round(spend, 2)),
+            "ctr": str(ctr),
+            "cpm": str(cpm),
+            "reach": str(reach),
+        })
+    return rows
+
+
+def generate_linkedin_monthly_demo():
+    months = []
+    now = datetime.now()
+    campaigns = [
+        ("L1 — Awareness", "TOPO", "#0077B5", 40),
+        ("L2 — Consideração", "MEIO", "#0A66C2", 30),
+    ]
+    for m_offset in range(3):
+        dt = now - timedelta(days=30 * m_offset)
+        month_str = dt.strftime("%Y-%m")
+        month_name = dt.strftime("%b/%Y")
+        for cname, funnel, color, budget in campaigns:
+            factor = 1.0 - (m_offset * 0.15)
+            spend = round(budget * 30 * factor * random.uniform(0.85, 1.05), 2)
+            impressions = int(spend * random.uniform(12, 18))
+            clicks = int(impressions * random.uniform(0.015, 0.025))
+            leads = random.randint(0, 2) if funnel == "MEIO" else 0
+            months.append({
+                "month": month_str, "month_name": month_name,
+                "funnel": funnel, "campaign_name": cname,
+                "color": color, "spend": spend,
+                "impressions": impressions, "clicks": clicks,
+                "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+                "cpm": round(spend / impressions * 1000, 2) if impressions else 0,
+                "leads": leads, "budget_dia": budget,
+            })
+    return months
+
+
+@app.get("/api/linkedin/summary")
+async def linkedin_summary(days: int = Query(30, ge=7, le=365)):
+    camps = DEMO_LINKEDIN_CAMPAIGNS
+    total = {
+        "spend": sum(c["spend"] for c in camps),
+        "impressions": sum(c["impressions"] for c in camps),
+        "clicks": sum(c["clicks"] for c in camps),
+        "reach": sum(c["reach"] for c in camps),
+        "leads": sum(c["leads"] for c in camps),
+    }
+    total["ctr"] = round(total["clicks"] / total["impressions"] * 100, 2) if total["impressions"] else 0
+    total["cpm"] = round(total["spend"] / total["impressions"] * 1000, 2) if total["impressions"] else 0
+    total["cpc"] = round(total["spend"] / total["clicks"], 2) if total["clicks"] else 0
+    return total
+
+
+@app.get("/api/linkedin/campaigns")
+async def linkedin_campaigns(days: int = Query(30, ge=7, le=365)):
+    return DEMO_LINKEDIN_CAMPAIGNS
+
+
+@app.get("/api/linkedin/ads")
+async def linkedin_ads(days: int = Query(30, ge=7, le=365)):
+    return DEMO_LINKEDIN_ADS
+
+
+@app.get("/api/linkedin/daily")
+async def linkedin_daily(days: int = Query(30, ge=7, le=365)):
+    return generate_linkedin_daily_demo(days)
+
+
+@app.get("/api/linkedin/monthly")
+async def linkedin_monthly():
+    return generate_linkedin_monthly_demo()

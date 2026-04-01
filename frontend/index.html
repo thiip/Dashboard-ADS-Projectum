@@ -52,7 +52,7 @@
       </div>
       <div>
         <div class="font-bold text-white text-sm leading-none">Projectum</div>
-        <div class="text-[11px] text-gray-500 mt-0.5">Meta Ads Dashboard — Natal 2026</div>
+        <div class="text-[11px] text-gray-500 mt-0.5">Ads Dashboard — Natal 2026</div>
       </div>
     </div>
 
@@ -88,6 +88,22 @@
     </div>
   </div>
 </header>
+
+<!-- Platform Tabs -->
+<div class="border-b border-[#1f1f1f]" style="background:#0d0d0d;">
+  <div class="max-w-[1400px] mx-auto px-6 flex gap-1">
+    <button onclick="switchPlatform('meta')" id="tabMeta"
+      class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all tab-active">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.04c-5.5 0-9.96 4.46-9.96 9.96 0 4.41 2.87 8.14 6.84 9.45v-6.69H6.46v-2.76h2.42V9.8c0-2.39 1.42-3.71 3.6-3.71 1.04 0 2.13.19 2.13.19v2.34h-1.2c-1.18 0-1.55.73-1.55 1.49v1.79h2.64l-.42 2.76h-2.22v6.69c3.97-1.31 6.84-5.04 6.84-9.45 0-5.5-4.46-9.96-9.96-9.96z"/></svg>
+      Meta Ads
+    </button>
+    <button onclick="switchPlatform('linkedin')" id="tabLinkedin"
+      class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all tab-inactive">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+      LinkedIn Ads
+    </button>
+  </div>
+</div>
 
 <main class="max-w-[1400px] mx-auto px-6 py-6 space-y-6">
 
@@ -265,6 +281,22 @@ let sortField = 'spend';
 let sortAsc = false;
 let chartSpend, chartCTR, chartCampaignClicks, chartSpendPie, chartMonthly, chartCumulative, chartCPL;
 let monthlyData = [];
+let activePlatform = 'meta'; // 'meta' or 'linkedin'
+
+function switchPlatform(platform) {
+  activePlatform = platform;
+  document.getElementById('tabMeta').className = `flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${platform === 'meta' ? 'tab-active' : 'tab-inactive'}`;
+  document.getElementById('tabLinkedin').className = `flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${platform === 'linkedin' ? 'tab-active' : 'tab-inactive'}`;
+  // Update funnel labels for LinkedIn
+  const funnelLabel = platform === 'linkedin' ? 'AWARENESS → CONSIDERATION' : 'TOPO → MEIO → FUNDO';
+  const subtitle = platform === 'linkedin' ? 'LinkedIn Ads Dashboard — Natal 2026' : 'Ads Dashboard — Natal 2026';
+  document.querySelector('header .text-\\[11px\\]').textContent = subtitle;
+  loadAll();
+}
+
+function apiPrefix() {
+  return activePlatform === 'linkedin' ? '/api/linkedin' : '/api';
+}
 
 // =====================================================
 // UTILS
@@ -722,13 +754,13 @@ function renderTable() {
 // =====================================================
 async function loadSummary() {
   const days = getDays();
-  const data = await apiFetch(`/api/summary?days=${days}`);
+  const data = await apiFetch(`${apiPrefix()}/summary?days=${days}`);
   renderKPIs(data);
 }
 
 async function loadCampaigns() {
   const days = getDays();
-  const data = await apiFetch(`/api/campaigns?days=${days}`);
+  const data = await apiFetch(`${apiPrefix()}/campaigns?days=${days}`);
   campaignsData = data;
   renderFunnel(data);
   updateChartsCampaigns(data);
@@ -736,26 +768,28 @@ async function loadCampaigns() {
 
 async function loadAds() {
   const days = getDays();
-  const data = await apiFetch(`/api/ads?days=${days}`);
+  const data = await apiFetch(`${apiPrefix()}/ads?days=${days}`);
   adsData = data;
   renderTable();
 }
 
 async function loadDaily() {
   const days = getDays();
-  const data = await apiFetch(`/api/daily?days=${days}`);
+  const data = await apiFetch(`${apiPrefix()}/daily?days=${days}`);
   updateChartsDaily(data);
 }
 
 async function loadMonthly() {
-  const data = await apiFetch('/api/monthly');
+  const data = await apiFetch(`${apiPrefix()}/monthly`);
   monthlyData = data;
   renderMonthlyCharts(data);
   renderMonthlyTable(data);
 }
 
 function renderMonthlyCharts(data) {
-  const colors = { TOPO: '#3B82F6', MEIO: '#8B5CF6', FUNDO: '#10B981' };
+  const colors = activePlatform === 'linkedin'
+    ? { TOPO: '#0077B5', MEIO: '#0A66C2', FUNDO: '#10B981' }
+    : { TOPO: '#3B82F6', MEIO: '#8B5CF6', FUNDO: '#10B981' };
 
   // Group by month
   const monthMap = {};
