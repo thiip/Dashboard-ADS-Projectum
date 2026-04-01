@@ -4,4 +4,4 @@ requests==2.32.3
 python-dotenv==1.0.1
 supabase==2.11.0
 aiofiles==24.1.0
-google-ads==25.1.0
+google-ads==30.0.0
