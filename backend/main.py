@@ -945,8 +945,193 @@ async def linkedin_monthly():
 
 
 # =====================================================
-# GOOGLE ADS — Demo Data + Endpoints
+# GOOGLE ADS — Real API Endpoints
 # =====================================================
+
+GOOGLE_CUSTOMER_ID = os.getenv("GOOGLE_ADS_CUSTOMER_ID", "3213298943")
+_gads_client = None
+
+
+def _get_gads_client():
+    global _gads_client
+    if _gads_client is not None:
+        return _gads_client
+    try:
+        from google.ads.googleads.client import GoogleAdsClient as _GoogleAdsClient
+        # Tenta carregar do arquivo local (dev)
+        yaml_path = Path(__file__).parent / "google-ads.yaml"
+        if yaml_path.exists():
+            _gads_client = _GoogleAdsClient.load_from_storage(str(yaml_path))
+        else:
+            # Em produção: carrega das variáveis de ambiente
+            credentials = {
+                "developer_token": os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
+                "client_id": os.getenv("GOOGLE_ADS_CLIENT_ID", ""),
+                "client_secret": os.getenv("GOOGLE_ADS_CLIENT_SECRET", ""),
+                "refresh_token": os.getenv("GOOGLE_ADS_REFRESH_TOKEN", ""),
+                "use_proto_plus": True,
+            }
+            _gads_client = _GoogleAdsClient.load_from_dict(credentials)
+        return _gads_client
+    except Exception as e:
+        raise RuntimeError(f"Google Ads API não configurada: {e}")
+
+
+def _micros_to_brl(micros):
+    return round(micros / 1_000_000, 2)
+
+
+def fetch_google_campaigns(days: int):
+    client = _get_gads_client()
+    ga_service = client.get_service("GoogleAdsService")
+    query = f"""
+        SELECT
+            campaign.id,
+            campaign.name,
+            campaign.status,
+            metrics.impressions,
+            metrics.clicks,
+            metrics.cost_micros,
+            metrics.ctr,
+            metrics.average_cpc,
+            metrics.conversions
+        FROM campaign
+        WHERE segments.date DURING LAST_{days}_DAYS
+          AND campaign.status != 'REMOVED'
+        ORDER BY metrics.cost_micros DESC
+    """
+    response = ga_service.search(customer_id=GOOGLE_CUSTOMER_ID, query=query)
+    campaigns = []
+    for row in response:
+        c = row.campaign
+        m = row.metrics
+        spend = _micros_to_brl(m.cost_micros)
+        clicks = m.clicks
+        impressions = m.impressions
+        campaigns.append({
+            "id": str(c.id),
+            "name": c.name,
+            "status": c.status.name,
+            "spend": spend,
+            "impressions": impressions,
+            "clicks": clicks,
+            "reach": impressions,
+            "leads": int(m.conversions),
+            "ctr": round(m.ctr * 100, 2),
+            "cpc": _micros_to_brl(m.average_cpc),
+            "cpm": round(spend / impressions * 1000, 2) if impressions else 0,
+        })
+    return campaigns
+
+
+def fetch_google_ads_detail(days: int):
+    client = _get_gads_client()
+    ga_service = client.get_service("GoogleAdsService")
+    query = f"""
+        SELECT
+            ad_group_ad.ad.id,
+            ad_group_ad.ad.name,
+            ad_group_ad.ad.type_,
+            campaign.name,
+            ad_group.name,
+            metrics.impressions,
+            metrics.clicks,
+            metrics.cost_micros,
+            metrics.ctr,
+            metrics.average_cpc,
+            metrics.conversions
+        FROM ad_group_ad
+        WHERE segments.date DURING LAST_{days}_DAYS
+          AND ad_group_ad.status != 'REMOVED'
+        ORDER BY metrics.cost_micros DESC
+        LIMIT 50
+    """
+    response = ga_service.search(customer_id=GOOGLE_CUSTOMER_ID, query=query)
+    ads = []
+    for row in response:
+        a = row.ad_group_ad.ad
+        m = row.metrics
+        spend = _micros_to_brl(m.cost_micros)
+        clicks = m.clicks
+        impressions = m.impressions
+        ads.append({
+            "id": str(a.id),
+            "name": a.name or f"Ad {a.id}",
+            "campaign_name": row.campaign.name,
+            "ad_group": row.ad_group.name,
+            "spend": spend,
+            "impressions": impressions,
+            "clicks": clicks,
+            "leads": int(m.conversions),
+            "ctr": round(m.ctr * 100, 2),
+            "cpc": _micros_to_brl(m.average_cpc),
+            "cpm": round(spend / impressions * 1000, 2) if impressions else 0,
+        })
+    return ads
+
+
+def fetch_google_daily(days: int):
+    client = _get_gads_client()
+    ga_service = client.get_service("GoogleAdsService")
+    query = f"""
+        SELECT
+            segments.date,
+            metrics.impressions,
+            metrics.clicks,
+            metrics.cost_micros,
+            metrics.conversions
+        FROM customer
+        WHERE segments.date DURING LAST_{days}_DAYS
+        ORDER BY segments.date ASC
+    """
+    response = ga_service.search(customer_id=GOOGLE_CUSTOMER_ID, query=query)
+    daily = []
+    for row in response:
+        m = row.metrics
+        spend = _micros_to_brl(m.cost_micros)
+        daily.append({
+            "date": row.segments.date,
+            "spend": spend,
+            "impressions": m.impressions,
+            "clicks": m.clicks,
+            "leads": int(m.conversions),
+            "ctr": round(m.clicks / m.impressions * 100, 2) if m.impressions else 0,
+            "cpc": round(spend / m.clicks, 2) if m.clicks else 0,
+        })
+    return daily
+
+
+def fetch_google_monthly():
+    client = _get_gads_client()
+    ga_service = client.get_service("GoogleAdsService")
+    query = """
+        SELECT
+            segments.month,
+            metrics.impressions,
+            metrics.clicks,
+            metrics.cost_micros,
+            metrics.conversions
+        FROM customer
+        WHERE segments.date DURING LAST_12_MONTHS
+        ORDER BY segments.month ASC
+    """
+    response = ga_service.search(customer_id=GOOGLE_CUSTOMER_ID, query=query)
+    monthly = {}
+    for row in response:
+        month = row.segments.month[:7]  # YYYY-MM
+        m = row.metrics
+        if month not in monthly:
+            monthly[month] = {"month": month, "spend": 0, "impressions": 0, "clicks": 0, "leads": 0}
+        monthly[month]["spend"] += _micros_to_brl(m.cost_micros)
+        monthly[month]["impressions"] += m.impressions
+        monthly[month]["clicks"] += m.clicks
+        monthly[month]["leads"] += int(m.conversions)
+    result = list(monthly.values())
+    for r in result:
+        r["spend"] = round(r["spend"], 2)
+        r["ctr"] = round(r["clicks"] / r["impressions"] * 100, 2) if r["impressions"] else 0
+        r["cpc"] = round(r["spend"] / r["clicks"], 2) if r["clicks"] else 0
+    return result
 
 DEMO_GOOGLE_CAMPAIGNS = [
     {
@@ -1130,35 +1315,50 @@ def generate_google_monthly_demo():
 
 @app.get("/api/google/summary")
 async def google_summary(days: int = Query(30, ge=7, le=365)):
-    camps = DEMO_GOOGLE_CAMPAIGNS
-    total = {
-        "spend": sum(c["spend"] for c in camps),
-        "impressions": sum(c["impressions"] for c in camps),
-        "clicks": sum(c["clicks"] for c in camps),
-        "reach": sum(c["reach"] for c in camps),
-        "leads": sum(c["leads"] for c in camps),
-    }
-    total["ctr"] = round(total["clicks"] / total["impressions"] * 100, 2) if total["impressions"] else 0
-    total["cpm"] = round(total["spend"] / total["impressions"] * 1000, 2) if total["impressions"] else 0
-    total["cpc"] = round(total["spend"] / total["clicks"], 2) if total["clicks"] else 0
-    return total
+    try:
+        camps = fetch_google_campaigns(days)
+        total = {
+            "spend": round(sum(c["spend"] for c in camps), 2),
+            "impressions": sum(c["impressions"] for c in camps),
+            "clicks": sum(c["clicks"] for c in camps),
+            "reach": sum(c["impressions"] for c in camps),
+            "leads": sum(c["leads"] for c in camps),
+        }
+        total["ctr"] = round(total["clicks"] / total["impressions"] * 100, 2) if total["impressions"] else 0
+        total["cpm"] = round(total["spend"] / total["impressions"] * 1000, 2) if total["impressions"] else 0
+        total["cpc"] = round(total["spend"] / total["clicks"], 2) if total["clicks"] else 0
+        return total
+    except Exception as e:
+        return {"error": str(e), "spend": 0, "impressions": 0, "clicks": 0, "reach": 0, "leads": 0, "ctr": 0, "cpm": 0, "cpc": 0}
 
 
 @app.get("/api/google/campaigns")
 async def google_campaigns(days: int = Query(30, ge=7, le=365)):
-    return DEMO_GOOGLE_CAMPAIGNS
+    try:
+        return fetch_google_campaigns(days)
+    except Exception as e:
+        return [{"error": str(e)}]
 
 
 @app.get("/api/google/ads")
 async def google_ads(days: int = Query(30, ge=7, le=365)):
-    return DEMO_GOOGLE_ADS
+    try:
+        return fetch_google_ads_detail(days)
+    except Exception as e:
+        return [{"error": str(e)}]
 
 
 @app.get("/api/google/daily")
 async def google_daily(days: int = Query(30, ge=7, le=365)):
-    return generate_google_daily_demo(days)
+    try:
+        return fetch_google_daily(days)
+    except Exception as e:
+        return [{"error": str(e)}]
 
 
 @app.get("/api/google/monthly")
 async def google_monthly():
-    return generate_google_monthly_demo()
+    try:
+        return fetch_google_monthly()
+    except Exception as e:
+        return [{"error": str(e)}]
