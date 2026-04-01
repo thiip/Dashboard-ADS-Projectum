@@ -945,45 +945,76 @@ async def linkedin_monthly():
 
 
 # =====================================================
-# GOOGLE ADS — Real API Endpoints
+# GOOGLE ADS — Real API Endpoints (REST transport)
 # =====================================================
 
 GOOGLE_CUSTOMER_ID = os.getenv("GOOGLE_ADS_CUSTOMER_ID", "3213298943")
-_gads_client = None
+GADS_API_VERSION = "v20"
+_gads_token_cache: dict = {}
 
 
-def _get_gads_client():
-    global _gads_client
-    if _gads_client is not None:
-        return _gads_client
-    try:
-        from google.ads.googleads.client import GoogleAdsClient as _GoogleAdsClient
-        # Tenta carregar do arquivo local (dev)
-        yaml_path = Path(__file__).parent / "google-ads.yaml"
-        if yaml_path.exists():
-            _gads_client = _GoogleAdsClient.load_from_storage(str(yaml_path))
-        else:
-            # Em produção: carrega das variáveis de ambiente
-            credentials = {
-                "developer_token": os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
-                "client_id": os.getenv("GOOGLE_ADS_CLIENT_ID", ""),
-                "client_secret": os.getenv("GOOGLE_ADS_CLIENT_SECRET", ""),
-                "refresh_token": os.getenv("GOOGLE_ADS_REFRESH_TOKEN", ""),
-                "use_proto_plus": True,
-            }
-            _gads_client = _GoogleAdsClient.load_from_dict(credentials)
-        return _gads_client
-    except Exception as e:
-        raise RuntimeError(f"Google Ads API não configurada: {e}")
+def _get_gads_credentials():
+    """Load Google Ads credentials from yaml (dev) or env vars (prod)."""
+    yaml_path = Path(__file__).parent / "google-ads.yaml"
+    if yaml_path.exists():
+        import yaml
+        with open(yaml_path) as f:
+            cfg = yaml.safe_load(f)
+        return cfg
+    return {
+        "developer_token": os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
+        "client_id": os.getenv("GOOGLE_ADS_CLIENT_ID", ""),
+        "client_secret": os.getenv("GOOGLE_ADS_CLIENT_SECRET", ""),
+        "refresh_token": os.getenv("GOOGLE_ADS_REFRESH_TOKEN", ""),
+    }
+
+
+def _get_gads_access_token():
+    """Exchange refresh token for access token via OAuth2."""
+    import time
+    cached = _gads_token_cache.get("token")
+    expires_at = _gads_token_cache.get("expires_at", 0)
+    if cached and time.time() < expires_at - 60:
+        return cached
+    cfg = _get_gads_credentials()
+    resp = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "client_id": cfg["client_id"],
+            "client_secret": cfg["client_secret"],
+            "refresh_token": cfg["refresh_token"],
+            "grant_type": "refresh_token",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    _gads_token_cache["token"] = data["access_token"]
+    _gads_token_cache["expires_at"] = time.time() + data.get("expires_in", 3600)
+    return data["access_token"]
+
+
+def _gads_search(query: str) -> list:
+    """Execute a GAQL query via REST API and return result rows."""
+    cfg = _get_gads_credentials()
+    access_token = _get_gads_access_token()
+    url = f"https://googleads.googleapis.com/{GADS_API_VERSION}/customers/{GOOGLE_CUSTOMER_ID}/googleAds:search"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "developer-token": cfg["developer_token"],
+        "Content-Type": "application/json",
+    }
+    body = {"query": query}
+    resp = requests.post(url, headers=headers, json=body, timeout=30)
+    resp.raise_for_status()
+    return resp.json().get("results", [])
 
 
 def _micros_to_brl(micros):
-    return round(micros / 1_000_000, 2)
+    return round(int(micros or 0) / 1_000_000, 2)
 
 
 def fetch_google_campaigns(days: int):
-    client = _get_gads_client()
-    ga_service = client.get_service("GoogleAdsService")
     query = f"""
         SELECT
             campaign.id,
@@ -1000,38 +1031,36 @@ def fetch_google_campaigns(days: int):
           AND campaign.status != 'REMOVED'
         ORDER BY metrics.cost_micros DESC
     """
-    response = ga_service.search(customer_id=GOOGLE_CUSTOMER_ID, query=query)
+    rows = _gads_search(query)
     campaigns = []
-    for row in response:
-        c = row.campaign
-        m = row.metrics
-        spend = _micros_to_brl(m.cost_micros)
-        clicks = m.clicks
-        impressions = m.impressions
+    for row in rows:
+        c = row.get("campaign", {})
+        m = row.get("metrics", {})
+        spend = _micros_to_brl(m.get("costMicros", 0))
+        clicks = int(m.get("clicks", 0))
+        impressions = int(m.get("impressions", 0))
         campaigns.append({
-            "id": str(c.id),
-            "name": c.name,
-            "status": c.status.name,
+            "id": str(c.get("id", "")),
+            "name": c.get("name", ""),
+            "status": c.get("status", "UNKNOWN"),
             "spend": spend,
             "impressions": impressions,
             "clicks": clicks,
             "reach": impressions,
-            "leads": int(m.conversions),
-            "ctr": round(m.ctr * 100, 2),
-            "cpc": _micros_to_brl(m.average_cpc),
+            "leads": int(float(m.get("conversions", 0))),
+            "ctr": round(float(m.get("ctr", 0)) * 100, 2),
+            "cpc": _micros_to_brl(m.get("averageCpc", 0)),
             "cpm": round(spend / impressions * 1000, 2) if impressions else 0,
         })
     return campaigns
 
 
 def fetch_google_ads_detail(days: int):
-    client = _get_gads_client()
-    ga_service = client.get_service("GoogleAdsService")
     query = f"""
         SELECT
             ad_group_ad.ad.id,
             ad_group_ad.ad.name,
-            ad_group_ad.ad.type_,
+            ad_group_ad.ad.type,
             campaign.name,
             ad_group.name,
             metrics.impressions,
@@ -1046,33 +1075,32 @@ def fetch_google_ads_detail(days: int):
         ORDER BY metrics.cost_micros DESC
         LIMIT 50
     """
-    response = ga_service.search(customer_id=GOOGLE_CUSTOMER_ID, query=query)
+    rows = _gads_search(query)
     ads = []
-    for row in response:
-        a = row.ad_group_ad.ad
-        m = row.metrics
-        spend = _micros_to_brl(m.cost_micros)
-        clicks = m.clicks
-        impressions = m.impressions
+    for row in rows:
+        a = row.get("adGroupAd", {}).get("ad", {})
+        m = row.get("metrics", {})
+        spend = _micros_to_brl(m.get("costMicros", 0))
+        clicks = int(m.get("clicks", 0))
+        impressions = int(m.get("impressions", 0))
+        ad_id = str(a.get("id", ""))
         ads.append({
-            "id": str(a.id),
-            "name": a.name or f"Ad {a.id}",
-            "campaign_name": row.campaign.name,
-            "ad_group": row.ad_group.name,
+            "id": ad_id,
+            "name": a.get("name") or f"Ad {ad_id}",
+            "campaign_name": row.get("campaign", {}).get("name", ""),
+            "ad_group": row.get("adGroup", {}).get("name", ""),
             "spend": spend,
             "impressions": impressions,
             "clicks": clicks,
-            "leads": int(m.conversions),
-            "ctr": round(m.ctr * 100, 2),
-            "cpc": _micros_to_brl(m.average_cpc),
+            "leads": int(float(m.get("conversions", 0))),
+            "ctr": round(float(m.get("ctr", 0)) * 100, 2),
+            "cpc": _micros_to_brl(m.get("averageCpc", 0)),
             "cpm": round(spend / impressions * 1000, 2) if impressions else 0,
         })
     return ads
 
 
 def fetch_google_daily(days: int):
-    client = _get_gads_client()
-    ga_service = client.get_service("GoogleAdsService")
     query = f"""
         SELECT
             segments.date,
@@ -1084,26 +1112,26 @@ def fetch_google_daily(days: int):
         WHERE segments.date DURING LAST_{days}_DAYS
         ORDER BY segments.date ASC
     """
-    response = ga_service.search(customer_id=GOOGLE_CUSTOMER_ID, query=query)
+    rows = _gads_search(query)
     daily = []
-    for row in response:
-        m = row.metrics
-        spend = _micros_to_brl(m.cost_micros)
+    for row in rows:
+        m = row.get("metrics", {})
+        spend = _micros_to_brl(m.get("costMicros", 0))
+        clicks = int(m.get("clicks", 0))
+        impressions = int(m.get("impressions", 0))
         daily.append({
-            "date": row.segments.date,
+            "date": row.get("segments", {}).get("date", ""),
             "spend": spend,
-            "impressions": m.impressions,
-            "clicks": m.clicks,
-            "leads": int(m.conversions),
-            "ctr": round(m.clicks / m.impressions * 100, 2) if m.impressions else 0,
-            "cpc": round(spend / m.clicks, 2) if m.clicks else 0,
+            "impressions": impressions,
+            "clicks": clicks,
+            "leads": int(float(m.get("conversions", 0))),
+            "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+            "cpc": round(spend / clicks, 2) if clicks else 0,
         })
     return daily
 
 
 def fetch_google_monthly():
-    client = _get_gads_client()
-    ga_service = client.get_service("GoogleAdsService")
     query = """
         SELECT
             segments.month,
@@ -1115,17 +1143,17 @@ def fetch_google_monthly():
         WHERE segments.date DURING LAST_12_MONTHS
         ORDER BY segments.month ASC
     """
-    response = ga_service.search(customer_id=GOOGLE_CUSTOMER_ID, query=query)
+    rows = _gads_search(query)
     monthly = {}
-    for row in response:
-        month = row.segments.month[:7]  # YYYY-MM
-        m = row.metrics
+    for row in rows:
+        month = row.get("segments", {}).get("month", "")[:7]  # YYYY-MM
+        m = row.get("metrics", {})
         if month not in monthly:
             monthly[month] = {"month": month, "spend": 0, "impressions": 0, "clicks": 0, "leads": 0}
-        monthly[month]["spend"] += _micros_to_brl(m.cost_micros)
-        monthly[month]["impressions"] += m.impressions
-        monthly[month]["clicks"] += m.clicks
-        monthly[month]["leads"] += int(m.conversions)
+        monthly[month]["spend"] += _micros_to_brl(m.get("costMicros", 0))
+        monthly[month]["impressions"] += int(m.get("impressions", 0))
+        monthly[month]["clicks"] += int(m.get("clicks", 0))
+        monthly[month]["leads"] += int(float(m.get("conversions", 0)))
     result = list(monthly.values())
     for r in result:
         r["spend"] = round(r["spend"], 2)
