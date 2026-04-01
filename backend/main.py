@@ -942,3 +942,223 @@ async def linkedin_daily(days: int = Query(30, ge=7, le=365)):
 @app.get("/api/linkedin/monthly")
 async def linkedin_monthly():
     return generate_linkedin_monthly_demo()
+
+
+# =====================================================
+# GOOGLE ADS — Demo Data + Endpoints
+# =====================================================
+
+DEMO_GOOGLE_CAMPAIGNS = [
+    {
+        "id": "g_camp_01",
+        "name": "[Search] Decoração Natal Shopping — Branded",
+        "status": "ACTIVE",
+        "funnel": "FUNDO",
+        "funnel_color": "#10B981",
+        "objective": "SEARCH",
+        "daily_budget": 35.00,
+        "impressions": 6240,
+        "clicks": 412,
+        "spend": 824.60,
+        "ctr": 6.60,
+        "cpm": 132.15,
+        "cpc": 2.00,
+        "reach": 4850,
+        "frequency": 1.29,
+        "leads": 8,
+    },
+    {
+        "id": "g_camp_02",
+        "name": "[Search] Decoração Natal Shopping — Genérico",
+        "status": "ACTIVE",
+        "funnel": "MEIO",
+        "funnel_color": "#8B5CF6",
+        "objective": "SEARCH",
+        "daily_budget": 50.00,
+        "impressions": 18920,
+        "clicks": 876,
+        "spend": 1542.30,
+        "ctr": 4.63,
+        "cpm": 81.52,
+        "cpc": 1.76,
+        "reach": 12400,
+        "frequency": 1.53,
+        "leads": 5,
+    },
+    {
+        "id": "g_camp_03",
+        "name": "[Display] Remarketing — Visitantes Site",
+        "status": "ACTIVE",
+        "funnel": "FUNDO",
+        "funnel_color": "#10B981",
+        "objective": "DISPLAY",
+        "daily_budget": 20.00,
+        "impressions": 42600,
+        "clicks": 298,
+        "spend": 396.40,
+        "ctr": 0.70,
+        "cpm": 9.31,
+        "cpc": 1.33,
+        "reach": 18200,
+        "frequency": 2.34,
+        "leads": 3,
+    },
+    {
+        "id": "g_camp_04",
+        "name": "[YouTube] Vídeo Portfólio — Awareness",
+        "status": "ACTIVE",
+        "funnel": "TOPO",
+        "funnel_color": "#3B82F6",
+        "objective": "VIDEO",
+        "daily_budget": 25.00,
+        "impressions": 68400,
+        "clicks": 1024,
+        "spend": 512.80,
+        "ctr": 1.50,
+        "cpm": 7.50,
+        "cpc": 0.50,
+        "reach": 35600,
+        "frequency": 1.92,
+        "leads": 0,
+    },
+]
+
+DEMO_GOOGLE_ADS = [
+    # Search Branded
+    {"id": "g_ad_01", "name": "Projectum Decoração Natal — Exact Match", "status": "ACTIVE",
+     "campaign_id": "g_camp_01", "campaign_name": "[Search] Decoração Natal Shopping — Branded",
+     "funnel": "FUNDO", "funnel_color": "#10B981",
+     "impressions": 3120, "clicks": 218, "spend": 436.20, "ctr": 6.99, "cpm": 139.81, "cpc": 2.00,
+     "reach": 2480, "frequency": 1.26, "leads": 5},
+    {"id": "g_ad_02", "name": "Projectum Shopping Centers — Phrase Match", "status": "ACTIVE",
+     "campaign_id": "g_camp_01", "campaign_name": "[Search] Decoração Natal Shopping — Branded",
+     "funnel": "FUNDO", "funnel_color": "#10B981",
+     "impressions": 3120, "clicks": 194, "spend": 388.40, "ctr": 6.22, "cpm": 124.49, "cpc": 2.00,
+     "reach": 2370, "frequency": 1.32, "leads": 3},
+    # Search Genérico
+    {"id": "g_ad_03", "name": "Decoração de Natal para Shopping — Broad", "status": "ACTIVE",
+     "campaign_id": "g_camp_02", "campaign_name": "[Search] Decoração Natal Shopping — Genérico",
+     "funnel": "MEIO", "funnel_color": "#8B5CF6",
+     "impressions": 9820, "clicks": 462, "spend": 812.40, "ctr": 4.70, "cpm": 82.73, "cpc": 1.76,
+     "reach": 6800, "frequency": 1.44, "leads": 3},
+    {"id": "g_ad_04", "name": "Empresa Decoração Natal — Phrase Match", "status": "ACTIVE",
+     "campaign_id": "g_camp_02", "campaign_name": "[Search] Decoração Natal Shopping — Genérico",
+     "funnel": "MEIO", "funnel_color": "#8B5CF6",
+     "impressions": 9100, "clicks": 414, "spend": 729.90, "ctr": 4.55, "cpm": 80.21, "cpc": 1.76,
+     "reach": 5600, "frequency": 1.63, "leads": 2},
+    # Display Remarketing
+    {"id": "g_ad_05", "name": "Banner 300x250 — Vila Alemã", "status": "ACTIVE",
+     "campaign_id": "g_camp_03", "campaign_name": "[Display] Remarketing — Visitantes Site",
+     "funnel": "FUNDO", "funnel_color": "#10B981",
+     "impressions": 22400, "clicks": 168, "spend": 210.80, "ctr": 0.75, "cpm": 9.41, "cpc": 1.25,
+     "reach": 9800, "frequency": 2.29, "leads": 2},
+    {"id": "g_ad_06", "name": "Banner 728x90 — Portfólio Natal", "status": "ACTIVE",
+     "campaign_id": "g_camp_03", "campaign_name": "[Display] Remarketing — Visitantes Site",
+     "funnel": "FUNDO", "funnel_color": "#10B981",
+     "impressions": 20200, "clicks": 130, "spend": 185.60, "ctr": 0.64, "cpm": 9.19, "cpc": 1.43,
+     "reach": 8400, "frequency": 2.40, "leads": 1},
+    # YouTube
+    {"id": "g_ad_07", "name": "Vídeo 30s — Portfólio Projectum 2025", "status": "ACTIVE",
+     "campaign_id": "g_camp_04", "campaign_name": "[YouTube] Vídeo Portfólio — Awareness",
+     "funnel": "TOPO", "funnel_color": "#3B82F6",
+     "impressions": 38200, "clicks": 612, "spend": 298.40, "ctr": 1.60, "cpm": 7.81, "cpc": 0.49,
+     "reach": 20800, "frequency": 1.84, "leads": 0},
+    {"id": "g_ad_08", "name": "Bumper 6s — Natal Shopping Centers", "status": "ACTIVE",
+     "campaign_id": "g_camp_04", "campaign_name": "[YouTube] Vídeo Portfólio — Awareness",
+     "funnel": "TOPO", "funnel_color": "#3B82F6",
+     "impressions": 30200, "clicks": 412, "spend": 214.40, "ctr": 1.36, "cpm": 7.10, "cpc": 0.52,
+     "reach": 14800, "frequency": 2.04, "leads": 0},
+]
+
+
+def generate_google_daily_demo(days: int):
+    rows = []
+    base_date = datetime.now() - timedelta(days=days)
+    for d in range(days):
+        dt = base_date + timedelta(days=d)
+        spend = random.uniform(80, 140) if dt.weekday() < 5 else random.uniform(40, 80)
+        impressions = int(spend * random.uniform(30, 60))
+        clicks = max(1, int(impressions * random.uniform(0.018, 0.04)))
+        ctr = round(clicks / impressions * 100, 2) if impressions else 0
+        cpm = round(spend / impressions * 1000, 2) if impressions else 0
+        reach = int(impressions * random.uniform(0.4, 0.65))
+        rows.append({
+            "date_start": dt.strftime("%Y-%m-%d"),
+            "date_stop": dt.strftime("%Y-%m-%d"),
+            "impressions": str(impressions),
+            "clicks": str(clicks),
+            "spend": str(round(spend, 2)),
+            "ctr": str(ctr),
+            "cpm": str(cpm),
+            "reach": str(reach),
+        })
+    return rows
+
+
+def generate_google_monthly_demo():
+    months = []
+    now = datetime.now()
+    campaigns = [
+        ("[Search] Branded", "FUNDO", "#10B981", 35),
+        ("[Search] Genérico", "MEIO", "#8B5CF6", 50),
+        ("[Display] Remarketing", "FUNDO", "#10B981", 20),
+        ("[YouTube] Awareness", "TOPO", "#3B82F6", 25),
+    ]
+    for m_offset in range(4):
+        dt = now - timedelta(days=30 * m_offset)
+        month_str = dt.strftime("%Y-%m")
+        month_name = dt.strftime("%b/%Y")
+        for cname, funnel, color, budget in campaigns:
+            factor = 1.0 - (m_offset * 0.08)
+            spend = round(budget * 30 * factor * random.uniform(0.9, 1.1), 2)
+            imp_mult = 50 if 'YouTube' in cname or 'Display' in cname else 12
+            impressions = int(spend * random.uniform(imp_mult * 0.8, imp_mult * 1.2))
+            ctr_base = 0.7 if 'Display' in cname else (1.5 if 'YouTube' in cname else 5.0)
+            clicks = int(impressions * random.uniform(ctr_base * 0.008, ctr_base * 0.012))
+            leads = random.randint(1, 4) if funnel in ("FUNDO", "MEIO") else 0
+            months.append({
+                "month": month_str, "month_name": month_name,
+                "funnel": funnel, "campaign_name": cname,
+                "color": color, "spend": spend,
+                "impressions": impressions, "clicks": clicks,
+                "ctr": round(clicks / impressions * 100, 2) if impressions else 0,
+                "cpm": round(spend / impressions * 1000, 2) if impressions else 0,
+                "leads": leads, "budget_dia": budget,
+            })
+    return months
+
+
+@app.get("/api/google/summary")
+async def google_summary(days: int = Query(30, ge=7, le=365)):
+    camps = DEMO_GOOGLE_CAMPAIGNS
+    total = {
+        "spend": sum(c["spend"] for c in camps),
+        "impressions": sum(c["impressions"] for c in camps),
+        "clicks": sum(c["clicks"] for c in camps),
+        "reach": sum(c["reach"] for c in camps),
+        "leads": sum(c["leads"] for c in camps),
+    }
+    total["ctr"] = round(total["clicks"] / total["impressions"] * 100, 2) if total["impressions"] else 0
+    total["cpm"] = round(total["spend"] / total["impressions"] * 1000, 2) if total["impressions"] else 0
+    total["cpc"] = round(total["spend"] / total["clicks"], 2) if total["clicks"] else 0
+    return total
+
+
+@app.get("/api/google/campaigns")
+async def google_campaigns(days: int = Query(30, ge=7, le=365)):
+    return DEMO_GOOGLE_CAMPAIGNS
+
+
+@app.get("/api/google/ads")
+async def google_ads(days: int = Query(30, ge=7, le=365)):
+    return DEMO_GOOGLE_ADS
+
+
+@app.get("/api/google/daily")
+async def google_daily(days: int = Query(30, ge=7, le=365)):
+    return generate_google_daily_demo(days)
+
+
+@app.get("/api/google/monthly")
+async def google_monthly():
+    return generate_google_monthly_demo()
